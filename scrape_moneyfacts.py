@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import csv
+import io
+import os
+import re
+from dataclasses import dataclass
+import html
+import json
+from datetime import date
+from decimal import Decimal
+from typing import Iterable
+
+import requests
+from bs4 import BeautifulSoup
+from google.cloud import storage
+
+
+URL = "https://moneyfactscompare.co.uk/savings-accounts/easy-access-savings-accounts/?id=null&business-type=16&activity-type=null&investment-amount=25000&investment-type=1&account-types=2048&interest-paid-frequencies=null&terms=null&account-opening-methods=null&account-management-methods=null&notice-periods=1&include-notice-period=true&include-term=true&age=21&has-withdrawal-restrictions=2&existing-customers-only=2&is-shariaa=2&joint-account-only=2&flexible-isa-only=2&quick-links-first=false&product-favorites-first=false&sort-order=AER&sort-order-text=Rate"
+
+
+@dataclass(frozen=True)
+class ProductRow:
+    position: int
+    provider: str
+    product_name: str
+    aer: str
+    duplicate_key: str
+
+
+def normalize(text: str) -> str:
+    return " ".join(text.split()).strip()
+
+
+def parse_aer(text: str) -> str | None:
+    match = re.search(r"(\d+(?:\.\d+)?)%", text)
+    if not match:
+        return None
+    return f"{Decimal(match.group(1)):.2f}"
+
+
+def extract_rows(page_html: str) -> list[ProductRow]:
+    soup = BeautifulSoup(page_html, "html.parser")
+    model_script = soup.find("script", attrs={"data-id": "savings-finderV3"})
+    if not model_script or not model_script.get("data-model"):
+        return []
+
+    raw_model = html.unescape(model_script["data-model"])
+    data = json.loads(raw_model)
+    table_items = data.get("TableItemsModel", {})
+    products = table_items.get("Products", [])
+
+    rows: list[ProductRow] = []
+    seen: set[str] = set()
+    position = 1
+
+    for product in products:
+        all_products = product.get("AllProducts") or []
+        primary = product.get("PrimaryProduct") or {}
+        candidates = [primary, *all_products]
+
+        selected = None
+        for candidate in candidates:
+            provider = normalize(candidate.get("ProviderName", ""))
+            product_name = normalize(candidate.get("ProductName", ""))
+            aer = candidate.get("AER")
+            if provider and product_name and aer not in (None, ""):
+                selected = candidate
+                break
+
+        if not selected:
+            continue
+
+        provider = normalize(selected.get("ProviderName", ""))
+        product_name = normalize(selected.get("ProductName", ""))
+        aer_value = selected.get("AER")
+        aer = f"{Decimal(str(aer_value)):.2f}" if aer_value is not None else None
+        if not provider or not product_name or not aer:
+            continue
+
+        duplicate_key = f"{provider}|{product_name}|{aer}"
+        if duplicate_key in seen:
+            continue
+        seen.add(duplicate_key)
+        rows.append(ProductRow(position=position, provider=provider, product_name=product_name, aer=aer, duplicate_key=duplicate_key))
+        position += 1
+
+    return rows
+
+
+def rows_to_csv(rows: Iterable[dict[str, str]]) -> str:
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=["scrape_date", "rank", "provider", "product_name", "aer", "duplicate_key"])
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return buf.getvalue()
+
+
+def upload_to_gcs(bucket_name: str, object_name: str, content: str) -> None:
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(object_name)
+    blob.upload_from_string(content, content_type="text/csv")
+
+
+def main() -> None:
+    bucket_name = os.environ["GCS_BUCKET"]
+    prefix = os.getenv("GCS_PREFIX", "moneyfacts")
+
+    response = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+    response.raise_for_status()
+
+    parsed = extract_rows(response.text)
+    today = date.today().isoformat()
+
+    output_rows = []
+    for row in parsed:
+        output_rows.append(
+            {
+                "scrape_date": today,
+                "rank": str(row.position),
+                "provider": row.provider,
+                "product_name": row.product_name,
+                "aer": row.aer,
+                "duplicate_key": row.duplicate_key,
+            }
+        )
+
+    csv_text = rows_to_csv(output_rows)
+    upload_to_gcs(bucket_name, f"{prefix}/{today}.csv", csv_text)
+    upload_to_gcs(bucket_name, f"{prefix}/latest.csv", csv_text)
+
+
+if __name__ == "__main__":
+    main()
