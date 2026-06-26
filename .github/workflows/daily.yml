@@ -38,6 +38,16 @@ jobs:
           if rows[0]["rank"] != "1":
               raise SystemExit("top row is not rank 1")
 
+          with open("data/history.csv", newline="", encoding="utf-8") as f:
+              history = list(csv.DictReader(f))
+
+          if not history:
+              raise SystemExit("history is empty")
+
+          required = {"scrape_date", "rank", "provider", "product_name", "aer", "duplicate_key"}
+          if not required.issubset(history[0].keys()):
+              raise SystemExit("history columns are missing")
+
           print("validation ok")
           PY
       - name: Commit snapshot
