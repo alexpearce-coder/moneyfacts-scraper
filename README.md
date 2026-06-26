@@ -4,7 +4,7 @@ Daily scraper for the Moneyfacts easy-access savings ranking page.
 
 ## Output
 
-- `data/history.csv`
+- `data/moneyfacts-scraper-history.csv`
 - `data/latest.csv`
 
 ## Environment
