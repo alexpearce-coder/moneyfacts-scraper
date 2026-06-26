@@ -9,6 +9,7 @@ import html
 import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import Iterable
 
 import requests
@@ -83,6 +84,14 @@ def rows_to_csv(rows: Iterable[dict[str, str]]) -> str:
     return buf.getvalue()
 
 
+def read_existing_rows(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+
+    with path.open(newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
 def sort_rows(rows: list[ProductRow]) -> list[ProductRow]:
     return sorted(rows, key=lambda row: (-Decimal(row.aer), row.provider, row.product_name))
 
@@ -95,6 +104,7 @@ def write_output(path: str, content: str) -> None:
 
 def main() -> None:
     output_dir = os.getenv("OUTPUT_DIR", "data")
+    history_path = Path(output_dir) / "history.csv"
 
     response = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     response.raise_for_status()
@@ -115,9 +125,13 @@ def main() -> None:
             }
         )
 
-    csv_text = rows_to_csv(output_rows)
-    write_output(os.path.join(output_dir, f"{today}.csv"), csv_text)
-    write_output(os.path.join(output_dir, "latest.csv"), csv_text)
+    history_rows = read_existing_rows(history_path)
+    history_rows.extend(output_rows)
+    history_csv = rows_to_csv(history_rows)
+    latest_csv = rows_to_csv(output_rows)
+
+    write_output(str(history_path), history_csv)
+    write_output(os.path.join(output_dir, "latest.csv"), latest_csv)
 
 
 if __name__ == "__main__":
