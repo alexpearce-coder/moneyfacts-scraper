@@ -1,4 +1,4 @@
-name: daily-moneyfacts-scrape
+name: moneyfacts-scraper-history
 
 on:
   schedule:
