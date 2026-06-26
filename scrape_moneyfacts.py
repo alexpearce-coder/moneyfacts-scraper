@@ -13,7 +13,6 @@ from typing import Iterable
 
 import requests
 from bs4 import BeautifulSoup
-from google.cloud import storage
 
 
 URL = "https://moneyfactscompare.co.uk/savings-accounts/easy-access-savings-accounts/?id=null&business-type=16&activity-type=null&investment-amount=25000&investment-type=1&account-types=2048&interest-paid-frequencies=null&terms=null&account-opening-methods=null&account-management-methods=null&notice-periods=1&include-notice-period=true&include-term=true&age=21&has-withdrawal-restrictions=2&existing-customers-only=2&is-shariaa=2&joint-account-only=2&flexible-isa-only=2&quick-links-first=false&product-favorites-first=false&sort-order=AER&sort-order-text=Rate"
@@ -97,16 +96,14 @@ def rows_to_csv(rows: Iterable[dict[str, str]]) -> str:
     return buf.getvalue()
 
 
-def upload_to_gcs(bucket_name: str, object_name: str, content: str) -> None:
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(object_name)
-    blob.upload_from_string(content, content_type="text/csv")
+def write_output(path: str, content: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(content)
 
 
 def main() -> None:
-    bucket_name = os.environ["GCS_BUCKET"]
-    prefix = os.getenv("GCS_PREFIX", "moneyfacts")
+    output_dir = os.getenv("OUTPUT_DIR", "data")
 
     response = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     response.raise_for_status()
@@ -128,8 +125,8 @@ def main() -> None:
         )
 
     csv_text = rows_to_csv(output_rows)
-    upload_to_gcs(bucket_name, f"{prefix}/{today}.csv", csv_text)
-    upload_to_gcs(bucket_name, f"{prefix}/latest.csv", csv_text)
+    write_output(os.path.join(output_dir, f"{today}.csv"), csv_text)
+    write_output(os.path.join(output_dir, "latest.csv"), csv_text)
 
 
 if __name__ == "__main__":
