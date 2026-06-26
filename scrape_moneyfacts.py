@@ -83,6 +83,10 @@ def rows_to_csv(rows: Iterable[dict[str, str]]) -> str:
     return buf.getvalue()
 
 
+def sort_rows(rows: list[ProductRow]) -> list[ProductRow]:
+    return sorted(rows, key=lambda row: (-Decimal(row.aer), row.provider, row.product_name))
+
+
 def write_output(path: str, content: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as f:
@@ -99,11 +103,11 @@ def main() -> None:
     today = date.today().isoformat()
 
     output_rows = []
-    for row in parsed:
+    for rank, row in enumerate(sort_rows(parsed), start=1):
         output_rows.append(
             {
                 "scrape_date": today,
-                "rank": str(row.position),
+                "rank": str(rank),
                 "provider": row.provider,
                 "product_name": row.product_name,
                 "aer": row.aer,
