@@ -19,6 +19,27 @@ jobs:
       - run: python scrape_moneyfacts.py
         env:
           OUTPUT_DIR: data
+      - name: Validate ranking
+        run: |
+          python - <<'PY'
+          import csv
+          from decimal import Decimal
+
+          with open("data/latest.csv", newline="", encoding="utf-8") as f:
+              rows = list(csv.DictReader(f))
+
+          if not rows:
+              raise SystemExit("no rows written")
+
+          aer_values = [Decimal(r["aer"]) for r in rows]
+          if aer_values != sorted(aer_values, reverse=True):
+              raise SystemExit("rows are not sorted by AER descending")
+
+          if rows[0]["rank"] != "1":
+              raise SystemExit("top row is not rank 1")
+
+          print("validation ok")
+          PY
       - name: Commit snapshot
         run: |
           git config user.name "github-actions[bot]"
