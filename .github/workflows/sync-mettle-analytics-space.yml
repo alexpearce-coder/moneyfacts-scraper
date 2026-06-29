@@ -1,0 +1,90 @@
+name: sync-mettle-analytics-space
+
+on:
+  push:
+    paths:
+      - data/moneyfacts-scraper-history.csv
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure GitHub auth
+        env:
+          GH_TOKEN: ${{ secrets.EEVEBANK_METTLE_ANALYTICS_TOKEN }}
+        run: gh auth setup-git
+
+      - name: Clone target repo
+        env:
+          GH_TOKEN: ${{ secrets.EEVEBANK_METTLE_ANALYTICS_TOKEN }}
+        run: gh repo clone eeveebank/mettle_analytics_space /tmp/mettle_analytics_space
+
+      - name: Sync seed files
+        env:
+          SOURCE_DATA: ${{ github.workspace }}/data/moneyfacts-scraper-history.csv
+        run: |
+          set -euo pipefail
+          cd /tmp/mettle_analytics_space
+          git checkout alex-moneyfacts-seed-upload
+          mkdir -p seeds models/main/2-data-lake-to-analytics/root_seeds
+          cp "$SOURCE_DATA" seeds/moneyfacts_scraper_history.csv
+          cat > seeds/moneyfacts_scraper_history.yml <<'YAML'
+version: 2
+seeds:
+  - name: moneyfacts_scraper_history
+    description: Daily Moneyfacts easy-access savings scrape history.
+    columns:
+      - name: scrape_date
+        description: Date the scrape ran.
+      - name: rank
+        description: Rank by AER descending for the scrape date.
+      - name: provider
+        description: Provider name.
+      - name: product_name
+        description: Product name.
+      - name: aer
+        description: AER value as a percentage string.
+      - name: duplicate_key
+        description: Deduplication key built from provider, product name, and AER.
+YAML
+          cat > models/main/2-data-lake-to-analytics/root_seeds/root_moneyfacts_scraper_history.sql <<'SQL'
+SELECT
+    scrape_date,
+    rank,
+    provider,
+    product_name,
+    aer,
+    duplicate_key
+FROM {{ ref('moneyfacts_scraper_history') }}
+SQL
+          cat > models/main/2-data-lake-to-analytics/root_seeds/root_moneyfacts_scraper_history_schema.yml <<'YAML'
+version: 2
+models:
+  - name: root_moneyfacts_scraper_history
+    description: Daily Moneyfacts easy-access savings scrape history.
+    meta:
+      owner: '@team-data-science-and-analytics'
+    columns:
+      - name: scrape_date
+        description: Date the scrape ran.
+      - name: rank
+        description: Rank by AER descending for the scrape date.
+      - name: provider
+        description: Provider name.
+      - name: product_name
+        description: Product name.
+      - name: aer
+        description: AER value as a percentage string.
+      - name: duplicate_key
+        description: Deduplication key built from provider, product name, and AER.
+YAML
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add seeds/moneyfacts_scraper_history.csv seeds/moneyfacts_scraper_history.yml models/main/2-data-lake-to-analytics/root_seeds/root_moneyfacts_scraper_history.sql models/main/2-data-lake-to-analytics/root_seeds/root_moneyfacts_scraper_history_schema.yml
+          git commit -m "Sync Moneyfacts seed"
+          git push
