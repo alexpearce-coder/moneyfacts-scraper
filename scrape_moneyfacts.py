@@ -104,7 +104,7 @@ def write_output(path: str, content: str) -> None:
 
 def main() -> None:
     output_dir = os.getenv("OUTPUT_DIR", "data")
-    history_path = Path(output_dir) / "moneyfacts-scraper-history.csv"
+    history_path = Path(output_dir) / "moneyfacts_scraper_history.csv"
 
     response = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     response.raise_for_status()

@@ -3,7 +3,7 @@ name: sync-mettle-analytics-space
 on:
   push:
     paths:
-      - data/moneyfacts-scraper-history.csv
+      - data/moneyfacts_scraper_history.csv
   workflow_dispatch:
 
 jobs:
@@ -26,7 +26,7 @@ jobs:
 
       - name: Sync seed files
         env:
-          SOURCE_DATA: ${{ github.workspace }}/data/moneyfacts-scraper-history.csv
+          SOURCE_DATA: ${{ github.workspace }}/data/moneyfacts_scraper_history.csv
         run: |
           set -euo pipefail
           cd /tmp/mettle_analytics_space
