@@ -38,7 +38,7 @@ jobs:
           if rows[0]["rank"] != "1":
               raise SystemExit("top row is not rank 1")
 
-          with open("data/moneyfacts-scraper-history.csv", newline="", encoding="utf-8") as f:
+          with open("data/moneyfacts_scraper_history.csv", newline="", encoding="utf-8") as f:
               history = list(csv.DictReader(f))
 
           if not history:
